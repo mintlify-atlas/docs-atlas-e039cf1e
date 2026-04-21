@@ -1,0 +1,139 @@
+---
+title: "Logging in and authenticating with Auditorio Estelar"
+description: "Understand how the login flow works, how credentials are verified against the backend, and how a successful session is persisted across app restarts."
+---
+
+When you open Auditorio Estelar and navigate to the login screen, `LoginFragment` collects your email and password, posts them to the backend, and — on success — stores your session data in `SharedPreferences` so you stay logged in between app restarts.
+
+## Login flow
+
+<Steps>
+  <Step title="Enter your credentials">
+    Type your registered email into the `Correo` field and your password into the `Contraseña` field. Tapping **Iniciar sesión** triggers `ejecutarLogin()`. If either field is empty, the app shows a toast and does not make a network request.
+  </Step>
+  <Step title="POST /login.php">
+    The app creates a `Usuario` object with only `email` and `password` set, then calls `apiService.loginUsuario(loginUser)` via Retrofit:
+
+    ```java
+    Usuario loginUser = new Usuario();
+    loginUser.setEmail(email);
+    loginUser.setPassword(pass);
+
+    apiService.loginUsuario(loginUser).enqueue(new Callback<LoginResponse>() { ... });
+    ```
+  </Step>
+  <Step title="Server verifies credentials">
+    `login.php` looks up the account by email using a prepared statement, then calls `password_verify()` to compare your plain-text password against the stored bcrypt hash:
+
+    ```php
+    $sentencia = $conexion->prepare("SELECT * FROM usuario WHERE email = ?");
+    $sentencia->bind_param("s", $email);
+    $sentencia->execute();
+    $resultado = $sentencia->get_result();
+
+    if ($usuario = $resultado->fetch_assoc()) {
+        if (password_verify($password, $usuario['password'])) {
+            // success
+        }
+    }
+    ```
+  </Step>
+  <Step title="Session is saved">
+    On a successful response, `LoginFragment` reads the returned `Usuario` object and calls `SessionManager.guardarLogin()` to persist the session. The app then navigates to `HomeFragment`.
+  </Step>
+</Steps>
+
+## JSON request and response
+
+**Request body** sent to `POST /login.php`:
+
+```json
+{
+  "email": "ana@ejemplo.com",
+  "password": "miContraseña123"
+}
+```
+
+**Successful response** — `success: true` plus a minimal `usuario` object:
+
+```json
+{
+  "success": true,
+  "usuario": {
+    "id_usuario": 42,
+    "nombre": "Ana",
+    "email": "ana@ejemplo.com"
+  }
+}
+```
+
+**Failed response** — `success: false` with a human-readable message:
+
+```json
+{
+  "success": false,
+  "message": "Password erroneo"
+}
+```
+
+```json
+{
+  "success": false,
+  "message": "Usuario no encontrado"
+}
+```
+
+## The `LoginResponse` model
+
+Retrofit deserializes the server response into `LoginResponse`, which wraps the success flag, the user object, and an optional error message:
+
+```java
+public class LoginResponse {
+
+    private boolean success;
+    private Usuario usuario;
+    private String message; //manejo de errores
+
+    public boolean esCorrecto() {
+        return success;
+    }
+
+    public Usuario getUsuario() {
+        return usuario;
+    }
+
+    public String getMensaje() {
+        return message;
+    }
+}
+```
+
+## Session persistence
+
+Once the response is confirmed as successful, the fragment calls `SessionManager.guardarLogin()` with the three values returned by the server:
+
+```java
+SessionManager session = new SessionManager(getContext());
+session.guardarLogin(
+        u.getIdUsuario(),
+        u.getNombre(),
+        u.getEmail()
+);
+```
+
+This writes four entries to `SharedPreferences` under the key `AuditorioPrefs`:
+
+| Key | Type | Value |
+|---|---|---|
+| `logueado` | boolean | `true` |
+| `id_usuario` | int | The user's database ID |
+| `nombre` | string | The user's first name |
+| `email` | string | The user's email address |
+
+<Tip>
+  Because the session is stored in `SharedPreferences`, it survives app restarts and device reboots. You will remain logged in until you explicitly tap the logout button in the profile screen.
+</Tip>
+
+## Password recovery
+
+If you forget your password, tap the **¿Olvidaste tu contraseña?** link on the login screen. This navigates to `RecuperarPasswordFragment`, which asks for your email address and shows a confirmation toast. The recovery email flow is a placeholder in the current version — no actual reset email is sent yet.

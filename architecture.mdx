@@ -1,0 +1,117 @@
+---
+title: "Auditorio Estelar architecture: app and API layers"
+description: "A layered overview of the Android app and PHP/MySQL backend: how fragments, Retrofit, and REST endpoints work together to deliver concert ticketing."
+---
+
+Auditorio Estelar is structured as two independent layers: an Android front end written in Java that handles all UI and user interaction, and a PHP REST API backed by a MySQL database that manages concerts, sessions, seats, and reservations. The Android app communicates with the backend exclusively over HTTP using Retrofit 2, sending and receiving JSON.
+
+## Android app layer
+
+The Android layer is a single-`Activity` application built around `MainActivity`. Navigation between top-level sections is handled by a `BottomNavigationView`, while deeper flows use the `FragmentManager` back stack.
+
+### Top-level navigation
+
+`MainActivity` hosts a `BottomNavigationView` with four tabs. Selecting a tab replaces the current fragment in `R.id.fragment_container` and clears the back stack so each tab always starts fresh.
+
+| Tab ID | Fragment | Purpose |
+|---|---|---|
+| `nav_home` | `HomeFragment` | Concert billboard — entry point to the ticketing flow |
+| `nav_calendario` | `CalendarioFragment` | Month-view calendar of all upcoming sessions |
+| `nav_perfil` | `PerfilFragment` | User profile, login, and registration |
+| `nav_menu` | `MenuFragment` | App menu and additional options |
+
+The `MainActivity` also manages a back button (`btnBack`). The button is hidden when the user is on `HomeFragment` at the root of the back stack, and visible on all other screens.
+
+### Ticketing fragment flow
+
+From `HomeFragment`, users navigate deeper into the ticketing flow. Each step is pushed onto the back stack so the back button returns to the previous screen.
+
+| Fragment | Purpose |
+|---|---|
+| `HomeFragment` | Displays the concert billboard carousel fetched from `mostrar_cartelera.php` |
+| `ProgramacionFragment` | Full scrollable concert listing — reached via the "See all schedule" link in `HomeFragment` |
+| `DetalleConciertoFragment` | Shows full details for a specific concert and its upcoming sessions |
+| `ButacasFragment` | Interactive seat map for a session — shows available, selected, and reserved states |
+| `ConfirmarCompraFragment` | Displays a summary of selected seats and total price before confirming |
+
+The primary ticketing flow is: **Home** → (tap concert card) → **Detalle** → (tap session) → **Butacas** → **ConfirmarCompra**.
+
+`ProgramacionFragment` is an alternate entry point — it lists all concerts in a vertical `RecyclerView` and tapping any item also navigates to `DetalleConciertoFragment`.
+
+## PHP backend layer
+
+The backend is a set of PHP scripts served by Apache, each acting as a REST endpoint. All scripts share the database connection defined in `backend/config/conexion.php`, which connects to the `teatro_proyecto` MySQL database using MySQLi.
+
+Endpoints return JSON. Error responses are also returned as JSON strings so the Android client can parse them uniformly.
+
+## Retrofit API interface
+
+The Android app declares all HTTP calls in a single `ApiService` interface. Retrofit generates the implementation at runtime.
+
+```java
+public interface ApiService {
+    @POST("registrar.php")
+    Call<String> registrarUsuario(@Body Usuario usuario);
+
+    @POST("sucio.php")
+    Call<String> publicarRegistro(@Body Sucio registro);
+
+    @POST("confirmar_reserva.php")
+    Call<Map<String, Object>> confirmarReserva(@Body Map<String, Object> body);
+
+    @GET("mostrar_cartelera.php")
+    Call<List<Concierto>> obtenerConciertos();
+
+    @GET("obtener_sesiones.php")
+    Call<List<Sesion>> obtenerSesiones(@Query("id_concierto") int idConcierto);
+
+    @GET("obtener_butacas_sesion.php")
+    Call<List<Butaca>> obtenerButacas(@Query("id_sesion") int idSesion);
+
+    @GET("obtener_calendario.php")
+    Call<List<EventoCalendario>> obtenerCalendario();
+
+    @POST("login.php")
+    Call<LoginResponse> loginUsuario(@Body Usuario usuario);
+}
+```
+
+`RetrofitClient` builds the `Retrofit` instance as a singleton, applying a lenient `Gson` converter to handle the backend's JSON responses:
+
+```java
+public class RetrofitClient {
+    private static final String BASE_URL = "https://wants-terrain-canvas-scholarships.trycloudflare.com/";
+    private static Retrofit retrofit = null;
+
+    public static Retrofit getClient() {
+        if (retrofit == null) {
+            Gson gson = new GsonBuilder()
+                    .setLenient()
+                    .create();
+            retrofit = new Retrofit.Builder()
+                    .baseUrl(BASE_URL)
+                    .addConverterFactory(GsonConverterFactory.create())
+                    .build();
+        }
+        return retrofit;
+    }
+}
+```
+
+## Data models
+
+The app uses five model classes that map directly to JSON responses from the backend:
+
+| Model | Description |
+|---|---|
+| `Concierto` | A concert listing: title, description, poster image URL, and ID |
+| `Sesion` | A scheduled performance of a concert, linked by `id_concierto` |
+| `Butaca` | A single seat in the hall: ID, row, number, zone, price, and availability state |
+| `Usuario` | A registered user: name, email, and password (used for both registration and login) |
+| `EventoCalendario` | A calendar entry: concert name and session date, used to mark days in `CalendarioFragment` |
+
+## Cleartext traffic
+
+<Note>
+  The app's `AndroidManifest.xml` sets `android:usesCleartextTraffic="true"`. This allows the app to make plain HTTP requests to a `localhost` development server. Before distributing the app, replace your local HTTP base URL with an HTTPS endpoint and remove or restrict this flag.
+</Note>

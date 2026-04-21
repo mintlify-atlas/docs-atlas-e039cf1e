@@ -1,0 +1,131 @@
+---
+title: "POST /confirmar_reserva.php — confirm a reservation"
+description: "Reference for POST /confirmar_reserva.php — atomically checks seat availability, inserts reservation records, and rolls back if any seat is already taken."
+---
+
+The reservations endpoint confirms a booking for one or more seats in a single database transaction. The server checks every requested seat for `DISPONIBLE` status before writing anything. If any seat is already `RESERVADA`, the entire operation rolls back and no seats are booked. You receive a single success or error response for the whole batch.
+
+---
+
+## POST /confirmar_reserva.php
+
+<Warning>
+  If any seat in your request is already `RESERVADA`, the entire reservation fails and **no seats** are booked. You must resolve the conflict (by removing the unavailable seat from your selection) and resubmit.
+</Warning>
+
+### Request body
+
+<ParamField body="id_usuario" type="integer" required>
+  The primary key of the authenticated user making the reservation. Obtained from the `usuario.id_usuario` field returned by `POST /login.php`.
+</ParamField>
+
+<ParamField body="id_sesion" type="integer" required>
+  The primary key of the session for which you are reserving seats.
+</ParamField>
+
+<ParamField body="butacas" type="array" required>
+  A non-empty array of seat objects to reserve. All seats must belong to the session identified by `id_sesion`.
+  <Expandable title="butacas item properties">
+    <ResponseField name="id_butaca" type="integer" required>
+      Primary key of the seat to reserve. Must be a positive integer.
+    </ResponseField>
+    <ResponseField name="precio" type="float">
+      Price of the seat at the time of selection, as returned by `GET /obtener_butacas_sesion.php`. Included for client-side record keeping; the server does not validate or store this value from the request.
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+### Transactional behavior
+
+The server opens a MySQL transaction with `$conexion->begin_transaction()` and then, for each seat in `butacas`:
+
+1. Executes `SELECT estado FROM butaca_sesion WHERE id_sesion=? AND id_butaca=?` to verify the seat is `DISPONIBLE`.
+2. If the seat is not `DISPONIBLE` (or does not exist), throws an exception — triggering `$conexion->rollback()` and aborting all further inserts.
+3. If available, inserts a row into `reserva_butaca` and updates `butaca_sesion.estado` to `'RESERVADA'`.
+
+Only after all seats pass the check does the server call `$conexion->commit()`.
+
+```php
+$conexion->begin_transaction();
+
+// For each seat:
+$stmt_check->bind_param("ii", $id_sesion, $id_butaca);
+$stmt_check->execute();
+$row = $stmt_check->get_result()->fetch_assoc();
+
+if (!$row || $row['estado'] !== 'DISPONIBLE') {
+    throw new Exception("Butaca $id_butaca no disponible");
+}
+
+$stmt_rb->bind_param("iii", $id_reserva, $id_sesion, $id_butaca);
+$stmt_rb->execute();
+
+$stmt_update->bind_param("ii", $id_sesion, $id_butaca);
+$stmt_update->execute();
+
+$conexion->commit();
+```
+
+### Success response
+
+<ResponseField name="success" type="boolean" required>
+  `true` when all seats were reserved successfully.
+</ResponseField>
+
+<ResponseField name="id_reserva" type="integer" required>
+  The auto-incremented primary key of the newly created row in the `reserva` table.
+</ResponseField>
+
+<ResponseField name="mensaje" type="string">
+  Confirmation message: `"Reserva creada correctamente"`.
+</ResponseField>
+
+```json
+{
+  "success": true,
+  "id_reserva": 42,
+  "mensaje": "Reserva creada correctamente"
+}
+```
+
+### Error response
+
+<ResponseField name="success" type="boolean" required>
+  `false` when the reservation could not be completed.
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Description of the failure. Examples: `"Butaca 5 no disponible"`, `"Datos incompletos"`, `"JSON vacío"`, `"ID de butaca inválido"`.
+</ResponseField>
+
+```json
+{
+  "success": false,
+  "error": "Butaca 5 no disponible"
+}
+```
+
+### curl example
+
+```bash
+curl -X POST https://wants-terrain-canvas-scholarships.trycloudflare.com/confirmar_reserva.php \
+  -H "Content-Type: application/json; charset=utf-8" \
+  -d '{
+    "id_usuario": 7,
+    "id_sesion": 12,
+    "butacas": [
+      { "id_butaca": 1, "precio": 45.00 },
+      { "id_butaca": 3, "precio": 45.00 },
+      { "id_butaca": 25, "precio": 28.00 }
+    ]
+  }'
+```
+
+### Retrofit call
+
+```java
+@POST("confirmar_reserva.php")
+Call<Map<String, Object>> confirmarReserva(@Body Map<String, Object> body);
+```
+
+The Android app constructs the request as a `Map<String, Object>` where the `"butacas"` value is a `List<Map<String, Object>>`, each map containing `"id_butaca"` and `"precio"`.

@@ -1,0 +1,131 @@
+---
+title: "Selecting seats on the interactive hall seating map"
+description: "Understand the seat map, what each seat state means visually, how the two hall zones are separated, and how tapping a seat toggles its selection."
+---
+
+Once you pick a session, `ButacasFragment` loads the interactive seating map for that session. Seats are fetched from the backend and split into two separate `RecyclerView` grids — one for the **Patio de Butacas** (stalls) and one for the **Anfiteatro** (circle). Each seat renders with a colour that reflects its current state, and you can tap any available seat to toggle it in or out of your selection.
+
+## The `Butaca` data model
+
+Every seat is represented by a `Butaca` object. The class implements `Serializable` so selected seats can be passed as a `Bundle` to the confirmation screen.
+
+```java
+// Butaca.java
+public class Butaca implements Serializable {
+    private int    id_butaca;
+    private int    fila;
+    private int    numero;
+    private String zona;
+    private double precio;
+    private String estado;
+
+    // Client-side only — not persisted in the database
+    private boolean seleccionada = false;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `id_butaca` | `int` | Primary key used when submitting the reservation |
+| `fila` | `int` | Row number within the zone |
+| `numero` | `int` | Seat number within the row |
+| `zona` | `String` | Zone name: `"Patio"` or `"Anfiteatro"` |
+| `precio` | `double` | Ticket price derived from the `zona` table |
+| `estado` | `String` | Server-side availability state |
+| `seleccionada` | `boolean` | Local toggle — `true` while the user has tapped this seat |
+
+The backend joins `butaca`, `zona`, and `butaca_sesion` to return all fields for a given session:
+
+```php
+// obtener_butacas_sesion.php
+$sql = "SELECT
+            b.id_butaca,
+            b.fila,
+            b.numero,
+            z.nombre AS zona,
+            z.precio,
+            bs.estado
+        FROM butaca b
+        JOIN zona z ON b.id_zona = z.id_zona
+        JOIN butaca_sesion bs ON b.id_butaca = bs.id_butaca
+        WHERE bs.id_sesion = ?
+        ORDER BY b.fila, b.numero";
+```
+
+## Seat states
+
+`AdaptadorButacas` colours each seat icon based on its `estado` value:
+
+| State | Colour | Label | Tappable |
+|---|---|---|---|
+| `DISPONIBLE` | Blue `#1E3A5F` | Seat number | Yes |
+| `DISPONIBLE` (selected) | Gold `#D4A047` | Seat number | Yes — tap again to deselect |
+| `RESERVADA` | Orange `#FF9800` | `R` | No |
+| `VENDIDA` | Red | `X` | No |
+| `BLOQUEADA` | Grey (30 % opacity) | _(blank)_ | No |
+
+```java
+// AdaptadorButacas.java — colour logic
+switch (b.getEstado()) {
+    case "VENDIDA":
+        holder.imgButaca.setColorFilter(Color.RED);
+        holder.imgButaca.setAlpha(0.5f);
+        holder.txtButaca.setText("X");
+        break;
+    case "RESERVADA":
+        holder.imgButaca.setColorFilter(Color.parseColor("#FF9800"));
+        holder.imgButaca.setAlpha(0.6f);
+        holder.txtButaca.setText("R");
+        break;
+    case "BLOQUEADA":
+        holder.imgButaca.setColorFilter(Color.GRAY);
+        holder.imgButaca.setAlpha(0.3f);
+        break;
+    default: // DISPONIBLE
+        if (b.getSeleccionada()) {
+            holder.imgButaca.setColorFilter(Color.parseColor("#D4A047"));
+        } else {
+            holder.imgButaca.setColorFilter(Color.parseColor("#1E3A5F"));
+        }
+        break;
+}
+```
+
+The `seleccionada` flag is **local to the app only** — it is never written to the database at this stage. The backend's `estado` field remains `DISPONIBLE` until you confirm the reservation.
+
+## Two-zone grid layout
+
+`ButacasFragment` receives the full seat list from the API and partitions it into two lists:
+
+```java
+// ButacasFragment.java — zone split
+for (Butaca b : listaCompleta) {
+    if ("Patio".equalsIgnoreCase(b.getZona())) {
+        patio.add(b);
+    } else if ("Anfiteatro".equalsIgnoreCase(b.getZona())) {
+        anfiteatro.add(b);
+    }
+}
+```
+
+Each zone gets its own `RecyclerView` with a `GridLayoutManager` set to four columns, so seats are displayed in a grid that mirrors the physical hall layout. The stage is conceptually at the bottom of the screen, with Patio rows closest and Anfiteatro rows further back.
+
+<Info>
+  Zone pricing comes from the `zona` table in the database. The `precio` value is resolved server-side in `obtener_butacas_sesion.php` via the `JOIN zona z ON b.id_zona = z.id_zona` clause, so each zone can carry a different ticket price. You can see the zone and price for every seat on the confirmation screen.
+</Info>
+
+## Toggling selection
+
+Tapping an available seat flips its `seleccionada` boolean and triggers a `notifyItemChanged` call so the colour updates immediately:
+
+```java
+// AdaptadorButacas.java — tap to select / deselect
+holder.itemView.setOnClickListener(v -> {
+    b.setSeleccionada(!b.getSeleccionada());
+    notifyItemChanged(position);
+});
+```
+
+Only seats with `estado == "DISPONIBLE"` receive a click listener. Tapping a reserved, sold, or blocked seat has no effect.
+
+When you are ready, tap **Continue** to collect all selected seats from both the `patio` and `anfiteatro` lists and pass them to `ConfirmarCompraFragment`.

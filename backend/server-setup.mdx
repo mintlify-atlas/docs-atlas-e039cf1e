@@ -1,0 +1,95 @@
+---
+title: "Deploy and test the Auditorio Estelar PHP API server"
+description: "Deploy the Auditorio Estelar PHP backend files, configure your local server, and verify the endpoints return JSON before connecting the Android app."
+---
+
+The Auditorio Estelar backend is a set of plain PHP scripts that connect to MySQL and respond with JSON. You can run them on any server stack that supports PHP and MySQL. The steps below use XAMPP, which bundles Apache, MySQL, and PHP for Windows, macOS, and Linux — but WAMP or a LAMP stack work exactly the same way.
+
+## Prerequisites
+
+- PHP 8 or later
+- MySQL 5.7 or later
+- A local server environment: [XAMPP](https://www.apachefriends.org/), WAMP, or LAMP
+
+<Steps>
+  <Step title="Install XAMPP and start the services">
+    Download and install XAMPP from [apachefriends.org](https://www.apachefriends.org/). Open the XAMPP Control Panel and click **Start** next to both **Apache** and **MySQL**. Both status indicators should turn green before you continue.
+  </Step>
+
+  <Step title="Copy the backend files to the document root">
+    Copy the entire `backend/` folder from the repository into XAMPP's document root and name it `auditorioestelar`:
+
+    ```bash
+    # Windows default
+    cp -r backend/ C:/xampp/htdocs/auditorioestelar/
+
+    # macOS default
+    cp -r backend/ /Applications/XAMPP/htdocs/auditorioestelar/
+    ```
+
+    Your folder structure should look like:
+
+    ```
+    htdocs/
+    └── auditorioestelar/
+        ├── config/
+        │   └── conexion.php
+        ├── mostrar_cartelera.php
+        ├── obtener_sesiones.php
+        ├── obtener_butacas_sesion.php
+        ├── confirmar_reserva.php
+        ├── login.php
+        └── registrar.php
+    ```
+  </Step>
+
+  <Step title="Create the database and tables">
+    Open `http://localhost/phpmyadmin` in your browser, log in, and run the SQL from the [database setup guide](/backend/database). This creates the `teatro_proyecto` database and all required tables.
+  </Step>
+
+  <Step title="Edit the database credentials in conexion.php">
+    Open `config/conexion.php` and update `$hostname`, `$username`, and `$password` to match your MySQL installation:
+
+    ```php
+    <?php
+    // Mostrar errores
+    error_reporting(E_ALL);
+    ini_set('display_errors', 1);
+
+    // Datos de conexión a la base de datos
+    $hostname = "localhost";
+    $database = "teatro_proyecto";
+    $username = "root";
+    $password = "";
+
+    // Crear conexión
+    $conexion = new mysqli($hostname, $username, $password, $database);
+
+    // Errores de conexión
+    if ($conexion->connect_error) {
+        // Terminar la ejecución y enviar mensaje JSON
+        die(json_encode("Error: Fallo de conexión a la base de datos"));
+    }
+
+    // fijar charset UTF-8 PROBLEMAS DE CONEXION.
+    $conexion->set_charset("utf8");
+    ?>
+    ```
+
+    The `set_charset("utf8")` call ensures that accented characters in concert titles and seat zone names are transmitted correctly between PHP and MySQL.
+
+    <Warning>
+      The default configuration uses `root` with an empty password. Change both the username and password to a dedicated MySQL account before sharing the server with anyone or deploying to a non-local environment.
+    </Warning>
+  </Step>
+
+  <Step title="Test the endpoint in your browser">
+    With Apache and MySQL running, navigate to:
+
+    ```
+    http://localhost/auditorioestelar/mostrar_cartelera.php
+    ```
+
+    You should see a JSON array of concert objects (or `[]` if the `concierto` table is empty). Any PHP or database error will appear in the response body, letting you diagnose connection issues before touching the Android app.
+  </Step>
+</Steps>

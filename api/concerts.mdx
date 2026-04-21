@@ -1,0 +1,91 @@
+---
+title: "GET /mostrar_cartelera.php — retrieve all concerts"
+description: "Reference for GET /mostrar_cartelera.php, which returns the full list of concerts including title, description, and promotional poster URL."
+---
+
+The concerts endpoint returns every row in the `concierto` table. You call it with no parameters to populate the main billboard (cartelera) screen in the app. Each concert in the response includes a URL to its promotional poster image, which the app loads and displays in the listing.
+
+---
+
+## GET /mostrar_cartelera.php
+
+No query parameters or request body are required. The endpoint executes a straightforward `SELECT` and returns all concerts as a JSON array.
+
+### SQL executed
+
+```php
+$sql = "SELECT id_concierto, titulo, descripcion, cartel_url FROM concierto";
+```
+
+### Response
+
+An array of concert objects. On error, a single object with an `error` key is returned instead.
+
+<ResponseField name="id_concierto" type="integer">
+  Primary key of the concert record.
+</ResponseField>
+
+<ResponseField name="titulo" type="string">
+  Concert title as it appears on the billboard.
+</ResponseField>
+
+<ResponseField name="descripcion" type="string">
+  Full description of the concert, shown on the detail screen.
+</ResponseField>
+
+<ResponseField name="cartel_url" type="string">
+  Absolute URL to the promotional poster image (e.g., a hosted `.jpg` or `.png`). The Android app passes this directly to an image loading library.
+</ResponseField>
+
+### Sample response
+
+```json
+[
+  {
+    "id_concierto": 1,
+    "titulo": "Noche de Ópera Italiana",
+    "descripcion": "Una velada con las arias más célebres de Verdi y Puccini interpretadas por solistas internacionales.",
+    "cartel_url": "https://wants-terrain-canvas-scholarships.trycloudflare.com/img/cartelera/opera_italiana.jpg"
+  },
+  {
+    "id_concierto": 2,
+    "titulo": "Jazz bajo las Estrellas",
+    "descripcion": "Sesión de jazz en vivo con el cuarteto Monteverde, tributo a Miles Davis y John Coltrane.",
+    "cartel_url": "https://wants-terrain-canvas-scholarships.trycloudflare.com/img/cartelera/jazz_estrellas.jpg"
+  },
+  {
+    "id_concierto": 3,
+    "titulo": "Sinfonía de Fin de Año",
+    "descripcion": "La Orquesta Estelar interpreta la Novena Sinfonía de Beethoven para despedir el año.",
+    "cartel_url": "https://wants-terrain-canvas-scholarships.trycloudflare.com/img/cartelera/sinfonia_fin_ano.jpg"
+  }
+]
+```
+
+### Error response
+
+If the query fails, the server responds with a JSON object instead of an array:
+
+```json
+{
+  "error": "Error al recibir los conciertos"
+}
+```
+
+### curl example
+
+```bash
+curl -X GET https://wants-terrain-canvas-scholarships.trycloudflare.com/mostrar_cartelera.php \
+  -H "Content-Type: application/json; charset=utf-8"
+```
+
+### Retrofit call
+
+The Android app uses the following Retrofit interface method to invoke this endpoint:
+
+```java
+@GET("mostrar_cartelera.php")
+Call<List<Concierto>> obtenerConciertos();
+```
+
+Retrofit deserializes the response array into a `List<Concierto>` using Gson. Each element maps to a `Concierto` model object with fields matching the JSON keys above.

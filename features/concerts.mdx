@@ -1,0 +1,141 @@
+---
+title: "Browsing the concert billboard and picking sessions"
+description: "Learn how the concert billboard works, how concert data is modelled, and how you navigate from a listing to session selection before choosing seats."
+---
+
+The concert billboard is the entry point into the ticket-buying flow. When you open the app, `HomeFragment` immediately fetches all active concerts from the backend and displays them in an auto-rotating carousel. From there you can tap a concert to read its details and pick an upcoming session, or go straight to the full listing via **See all schedule**.
+
+## The home billboard
+
+`HomeFragment` uses a `ViewPager2` paired with a `TabLayout` to present each concert as a swipeable card. After the concerts are loaded, a `Handler` posts a delayed `Runnable` every 3 seconds to advance to the next card automatically. The rotation pauses when the fragment is not visible (`onPause`) and resumes when it returns to the foreground (`onResume`).
+
+```java
+// HomeFragment.java — automatic rotation loop
+private void iniRotacion() {
+    runnable = new Runnable() {
+        @Override
+        public void run() {
+            if (adapter == null || adapter.getItemCount() == 0) return;
+
+            int currentItem = viewPager2.getCurrentItem();
+            int totalItems  = adapter.getItemCount();
+
+            if (currentItem == totalItems - 1) {
+                viewPager2.setCurrentItem(0);
+            } else {
+                viewPager2.setCurrentItem(currentItem + 1);
+            }
+            handler.postDelayed(this, 3000);
+        }
+    };
+    handler.postDelayed(runnable, 3000);
+}
+```
+
+Tapping the **See all schedule** link navigates to `ProgramacionFragment`, which renders the same concert list in a vertical `RecyclerView` using a `LinearLayoutManager`.
+
+## The `Concierto` data model
+
+Every item in the billboard is backed by a `Concierto` object. The class implements `Serializable` so it can be passed between fragments via a `Bundle`.
+
+```java
+// Concierto.java
+public class Concierto implements Serializable {
+    private int    id_concierto;
+    private String titulo;
+    private String descripcion;
+    private String cartel_url;
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `id_concierto` | `int` | Primary key; used to fetch sessions for this concert |
+| `titulo` | `String` | Concert title displayed in the card header |
+| `descripcion` | `String` | Short description shown beneath the title |
+| `cartel_url` | `String` | Absolute URL of the promotional poster image |
+
+The backend endpoint `mostrar_cartelera.php` returns all four columns directly:
+
+```php
+// mostrar_cartelera.php
+$sql = "SELECT id_concierto, titulo, descripcion, cartel_url FROM concierto";
+```
+
+`AdaptadorConcierto` uses **Glide** to load the poster asynchronously into each card's `ImageView`:
+
+```java
+// AdaptadorConcierto.java — image loading
+Glide.with(holder.itemView.getContext())
+        .load(concierto.getCartelUrl())
+        .into(holder.imagen);
+```
+
+## Navigating to concert detail
+
+Tapping any concert card in `AdaptadorConcierto` calls `DetalleConciertoFragment.newInstance(...)`, passing the concert's four fields as `Bundle` arguments, and replaces the current fragment:
+
+```java
+// AdaptadorConcierto.java — click handler
+DetalleConciertoFragment fragment = DetalleConciertoFragment.newInstance(
+        concierto.getId_concierto(),
+        concierto.getTitulo(),
+        concierto.getDescripcion(),
+        concierto.getCartelUrl()
+);
+actividad.getSupportFragmentManager()
+        .beginTransaction()
+        .replace(R.id.fragment_container, fragment)
+        .addToBackStack(null)
+        .commit();
+```
+
+`DetalleConciertoFragment` renders the poster with Glide, sets the title and description from the bundle, and then immediately calls `cargarSesiones()` to fetch the available sessions for that concert.
+
+## Sessions and the `Sesion` model
+
+Sessions represent individual performance dates for a concert. The `Sesion` class holds three fields:
+
+```java
+// Sesion.java
+public class Sesion {
+    private int    id_sesion;
+    private String fecha;   // "YYYY-MM-DD"
+    private String hora;    // "HH:mm:ss"
+}
+```
+
+The backend filters to only future sessions so you never see dates that have already passed:
+
+```php
+// obtener_sesiones.php — future-only filter
+$sql = "SELECT id_sesion, fecha, hora
+        FROM sesion
+        WHERE id_concierto = ?
+        AND (
+            fecha > ?
+            OR (fecha = ? AND hora >= ?)
+        )
+        ORDER BY fecha, hora";
+```
+
+`AdaptadorSesiones` renders each session as a tappable row. When you tap a session row, the fragment builds a new `Bundle` containing `id_sesion`, `titulo`, `fecha`, and `hora`, then navigates to `ButacasFragment` for seat selection.
+
+<Steps>
+  <Step title="Open the app">
+    `HomeFragment` loads and the auto-rotating billboard carousel appears with concert posters.
+  </Step>
+  <Step title="Select a concert">
+    Tap any concert card in the carousel to open `DetalleConciertoFragment` directly. Alternatively, tap **See all schedule** to browse all concerts in `ProgramacionFragment` first, then tap a card from there.
+  </Step>
+  <Step title="Read the detail and choose a session">
+    `DetalleConciertoFragment` shows the full description and the upcoming sessions list. Tap a session row to proceed.
+  </Step>
+  <Step title="Pick your seats">
+    `ButacasFragment` opens the interactive seat map for that session.
+  </Step>
+</Steps>
+
+<Tip>
+  Each concert must have at least two scheduled sessions before it goes live. The project specification requires a minimum of two sessions per concert to appear on the billboard.
+</Tip>

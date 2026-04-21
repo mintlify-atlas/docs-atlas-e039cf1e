@@ -1,0 +1,95 @@
+---
+title: "Configure the Android app to connect to your backend"
+description: "Point the Android app at your PHP backend by editing RetrofitClient.java, and understand the AndroidManifest settings that make local development work."
+---
+
+The Android app communicates with the PHP backend through [Retrofit](https://square.github.io/retrofit/), a type-safe HTTP client for Java and Kotlin. Before running the app you need to make sure `RetrofitClient.java` points at your server and that the Android build requirements are met.
+
+## Setting the base URL in RetrofitClient.java
+
+`RetrofitClient.java` is the single place where the backend address is configured. Open it at `app/src/main/java/com/asg/auditorioestelar/RetrofitClient.java`:
+
+```java
+package com.asg.auditorioestelar;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import retrofit2.Retrofit;
+import retrofit2.converter.gson.GsonConverterFactory;
+import retrofit2.converter.scalars.ScalarsConverterFactory;
+
+public class RetrofitClient {
+    private static final String BASE_URL = "https://wants-terrain-canvas-scholarships.trycloudflare.com/"; //server aitor
+    //private static final String BASE_URL = "http://10.0.2.2/teatro/config/"; // sin uso cambiar si se cierra el server
+    private static Retrofit retrofit = null;
+
+    public static Retrofit getClient() {
+        if (retrofit == null) {
+            Gson gson = new GsonBuilder()
+                    .setLenient()
+                    .create();
+            retrofit = new Retrofit.Builder()
+                    .baseUrl(BASE_URL)
+                    .addConverterFactory(GsonConverterFactory.create())
+                    //.addConverterFactory(ScalarsConverterFactory.create())
+                    .build();
+        }
+        return retrofit;
+    }
+}
+```
+
+Replace the value of `BASE_URL` with the address of your own server. The URL must end with a trailing slash.
+
+<Tip>
+  When running the app in the Android Emulator, the emulator's `localhost` is the emulator itself — not your development machine. Use `10.0.2.2` to reach your machine's `localhost`. For example: `http://10.0.2.2/auditorioestelar/`
+</Tip>
+
+## Allowing cleartext HTTP traffic
+
+During local development the backend typically runs over plain HTTP. Android blocks cleartext (non-HTTPS) traffic by default from API level 28 onward, so the manifest opts in explicitly with `usesCleartextTraffic="true"`.
+
+The relevant section of `app/src/main/AndroidManifest.xml`:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application
+        android:theme="@style/Theme.AuditorioEstelar"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+```
+
+<Warning>
+  Remove `android:usesCleartextTraffic="true"` and switch `BASE_URL` to an HTTPS address before any production deployment. Cleartext traffic exposes user credentials and reservation data to network interception.
+</Warning>
+
+## Build requirements
+
+The app targets a specific range of Android API levels:
+
+| Setting     | Value | Meaning                                            |
+| ----------- | ----- | -------------------------------------------------- |
+| `minSdk`    | 24    | Requires Android 7.0 (Nougat) or later             |
+| `targetSdk` | 36    | Built and tested against Android 16 behavior rules |
+
+Make sure the Android SDK platform for API 36 is installed in Android Studio via **SDK Manager → SDK Platforms**.

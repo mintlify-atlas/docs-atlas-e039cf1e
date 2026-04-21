@@ -1,0 +1,114 @@
+---
+title: "Managing your active session and profile in the app"
+description: "Learn how Auditorio Estelar stores and reads your authenticated session, what the profile screen shows, and how to log out of the app."
+---
+
+After a successful login, `SessionManager` becomes the single source of truth for your authenticated state. Every part of the app that needs to know who you are — from the profile screen to the ticket confirmation flow — reads from this class instead of making another network call.
+
+## `SessionManager` class
+
+`SessionManager` wraps Android's `SharedPreferences` API under the preference file name `AuditorioPrefs`. It exposes six public methods:
+
+```java
+public class SessionManager {
+    private static final String PREF_NAME = "AuditorioPrefs";
+
+    private SharedPreferences prefs;
+    private SharedPreferences.Editor editor;
+
+    public SessionManager(Context context){
+        prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+        editor = prefs.edit();
+    }
+
+    //guardamos login
+    public void guardarLogin(int id, String nombre, String email) {
+        editor.putBoolean("logueado", true);
+        editor.putInt("id_usuario", id);
+        editor.putString("nombre", nombre);
+        editor.putString("email", email);
+        editor.apply();
+    }
+
+    //Logout
+    public void cerrarSesion(){
+        editor.clear();
+        editor.apply();
+    }
+
+    //Estado o control de sesion
+    public boolean estaLogueado(){
+        return prefs.getBoolean("logueado", false);
+    }
+
+    //Datos del usuario
+    public int getIdUsuario(){
+        return prefs.getInt("id_usuario", -1);
+    }
+
+    public String getNombre(){
+        return prefs.getString("nombre", "");
+    }
+
+    public String getEmail(){
+        return prefs.getString("email", "");
+    }
+}
+```
+
+### Method reference
+
+| Method | Returns | Description |
+|---|---|---|
+| `guardarLogin(id, nombre, email)` | void | Writes all four session keys to `SharedPreferences`. Called by `LoginFragment` on success. |
+| `cerrarSesion()` | void | Clears the entire `AuditorioPrefs` file. Effectively signs you out. |
+| `estaLogueado()` | boolean | Returns `true` if the `logueado` key is present and `true`. Defaults to `false`. |
+| `getIdUsuario()` | int | Returns the stored `id_usuario`. Defaults to `-1` when not logged in. |
+| `getNombre()` | String | Returns the stored `nombre`. Defaults to an empty string. |
+| `getEmail()` | String | Returns the stored `email`. Defaults to an empty string. |
+
+## Profile screen (`PerfilFragment`)
+
+When you navigate to the **Perfil** tab, `PerfilFragment` immediately checks your session state. If you are not logged in, it redirects you to `LoginFragment` without rendering the profile UI:
+
+```java
+SessionManager session = new SessionManager(getContext());
+
+if (!session.estaLogueado()) {
+    getParentFragmentManager().beginTransaction()
+            .replace(R.id.fragment_container, new LoginFragment())
+            .commit();
+    return view;
+}
+```
+
+If you are logged in, the fragment reads your name from `SessionManager` and displays it in `txtNombre`:
+
+```java
+TextView txtNombre = view.findViewById(R.id.txtNombre);
+txtNombre.setText(session.getNombre());
+```
+
+## Logging out
+
+Tapping the **Logout** button in `PerfilFragment` calls `cerrarSesion()`, which clears every key in `AuditorioPrefs`, and then navigates back to `LoginFragment`:
+
+```java
+btnLogout.setOnClickListener(v -> {
+    session.cerrarSesion();
+
+    getParentFragmentManager().beginTransaction()
+            .replace(R.id.fragment_container, new LoginFragment())
+            .commit();
+});
+```
+
+After logout, `estaLogueado()` returns `false` and all getter methods return their defaults (`-1` for the ID, empty strings for name and email).
+
+## Session-gating reservation flows
+
+The app uses `estaLogueado()` as a guard before allowing you to confirm a ticket purchase. If you try to proceed through the reservation flow without being logged in, the app redirects you to the login screen. This ensures that `getIdUsuario()` always returns a valid database ID when an order is submitted.
+
+<Warning>
+  Session data — including your user ID, name, and email — is stored in plain `SharedPreferences` with `MODE_PRIVATE`. The data is not encrypted. Anyone with physical access to an unlocked, rooted device could read these values. Keep your device secure and use the logout button when sharing your phone.
+</Warning>

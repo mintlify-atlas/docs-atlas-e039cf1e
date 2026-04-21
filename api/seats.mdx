@@ -1,0 +1,129 @@
+---
+title: "GET /obtener_butacas_sesion.php — seats and availability"
+description: "Reference for GET /obtener_butacas_sesion.php, which returns the full seat layout with zone, price, and DISPONIBLE/RESERVADA status for a session."
+---
+
+The seats endpoint returns the complete seating layout for a specific session. Each seat record includes its row and number, the zone it belongs to, the zone's ticket price, and its current availability status. Use this data to render the interactive seat map in the app before the user selects seats.
+
+---
+
+## GET /obtener_butacas_sesion.php
+
+### Query parameters
+
+<ParamField query="id_sesion" type="integer" required>
+  The primary key of the session whose seating layout you want to retrieve. Must be a positive integer. The server returns HTTP 400 if this parameter is missing or zero.
+</ParamField>
+
+### SQL executed
+
+The query joins three tables to assemble each seat's full record, ordered so the seat map renders row by row:
+
+```php
+$sql = "SELECT
+            b.id_butaca,
+            b.fila,
+            b.numero,
+            z.nombre AS zona,
+            z.precio,
+            bs.estado
+        FROM butaca b
+        JOIN zona z ON b.id_zona = z.id_zona
+        JOIN butaca_sesion bs ON b.id_butaca = bs.id_butaca
+        WHERE bs.id_sesion = ?
+        ORDER BY b.fila, b.numero";
+```
+
+Results are ordered by `fila` ascending, then `numero` ascending within each row.
+
+### Response
+
+An array of seat objects. Each object represents one physical seat in the auditorium for the requested session.
+
+<ResponseField name="id_butaca" type="integer">
+  Primary key of the seat record in the `butaca` table.
+</ResponseField>
+
+<ResponseField name="fila" type="integer">
+  Row number, used to group seats when rendering the seat map.
+</ResponseField>
+
+<ResponseField name="numero" type="integer">
+  Seat number within its row.
+</ResponseField>
+
+<ResponseField name="zona" type="string">
+  Name of the seating zone (from the `zona` table). The app expects `"Patio"` for the stalls and `"Anfiteatro"` for the upper circle — these exact names drive the zone-split logic in `ButacasFragment`.
+</ResponseField>
+
+<ResponseField name="precio" type="float">
+  Ticket price for this zone in euros, sourced from `zona.precio`.
+</ResponseField>
+
+<ResponseField name="estado" type="string">
+  Current availability. Either `"DISPONIBLE"` (the seat can be reserved) or `"RESERVADA"` (already booked).
+</ResponseField>
+
+### Sample response
+
+```json
+[
+  {
+    "id_butaca": "1",
+    "fila": "1",
+    "numero": "1",
+    "zona": "Patio",
+    "precio": "45.00",
+    "estado": "DISPONIBLE"
+  },
+  {
+    "id_butaca": "2",
+    "fila": "1",
+    "numero": "2",
+    "zona": "Patio",
+    "precio": "45.00",
+    "estado": "RESERVADA"
+  },
+  {
+    "id_butaca": "3",
+    "fila": "1",
+    "numero": "3",
+    "zona": "Patio",
+    "precio": "45.00",
+    "estado": "DISPONIBLE"
+  },
+  {
+    "id_butaca": "25",
+    "fila": "5",
+    "numero": "1",
+    "zona": "Anfiteatro",
+    "precio": "28.00",
+    "estado": "DISPONIBLE"
+  }
+]
+```
+
+### Error responses
+
+| HTTP status | Response body |
+|-------------|---------------|
+| `400` | `{"error": "ID de sesión inválido o no proporcionado"}` |
+| `500` | `{"error": "Error en el servidor: <message>"}` |
+
+### curl example
+
+```bash
+curl -X GET "https://wants-terrain-canvas-scholarships.trycloudflare.com/obtener_butacas_sesion.php?id_sesion=12" \
+  -H "Content-Type: application/json; charset=utf-8"
+```
+
+### Retrofit call
+
+```java
+@GET("obtener_butacas_sesion.php")
+Call<List<Butaca>> obtenerButacas(@Query("id_sesion") int idSesion);
+```
+
+<Note>
+  The `seleccionada` field you may see on `Butaca` model objects in the Android app is managed entirely client-side. It is not stored in the database and is never sent or received by this endpoint. The server only knows `DISPONIBLE` or `RESERVADA`.
+</Note>

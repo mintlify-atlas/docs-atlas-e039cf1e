@@ -1,0 +1,160 @@
+---
+title: "Authentication: POST /registrar.php and /login.php"
+description: "Reference for POST /registrar.php and POST /login.php — create a new user account or authenticate an existing one with bcrypt password verification."
+---
+
+The Auditorio Estelar API provides two authentication endpoints. Use `POST /registrar.php` to create a new user account and `POST /login.php` to authenticate and retrieve the user's profile. Neither endpoint requires a prior session token.
+
+---
+
+## POST /registrar.php
+
+Creates a new user account. The password is hashed with `password_hash()` using PHP's `PASSWORD_DEFAULT` (bcrypt) before it is stored. The role is always set to `'cliente'` on the server side — you cannot set it from the client.
+
+### Request body
+
+<ParamField body="nombre" type="string" required>
+  User's first name.
+</ParamField>
+
+<ParamField body="apellido" type="string" required>
+  User's last name.
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  Email address. Must be unique in the `usuario` table. The server returns an error if this address is already registered.
+</ParamField>
+
+<ParamField body="telefono" type="string" required>
+  Contact phone number.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Plain-text password. The server hashes it immediately with `password_hash($datos->password, PASSWORD_DEFAULT)` and never stores the raw value.
+</ParamField>
+
+### SQL executed
+
+```php
+$sql = "INSERT INTO usuario (nombre, apellido, email, telefono, password, rol)
+        VALUES (?, ?, ?, ?, ?, ?)";
+```
+
+The `rol` column is hard-coded to `'cliente'` in the PHP before the query runs.
+
+### Response
+
+On success the server returns the plain string `"Usuario registrado correctamente"` (note: a JSON-encoded string, not an object).
+
+```json
+"Usuario registrado correctamente"
+```
+
+On duplicate email the server returns:
+
+```json
+"Error: El correo ya existe"
+```
+
+If the request body cannot be decoded:
+
+```json
+"Error: No se recibieron datos validos."
+```
+
+### Example
+
+```bash
+curl -X POST https://wants-terrain-canvas-scholarships.trycloudflare.com/registrar.php \
+  -H "Content-Type: application/json; charset=utf-8" \
+  -d '{
+    "nombre": "Ana",
+    "apellido": "García",
+    "email": "ana.garcia@example.com",
+    "telefono": "600123456",
+    "password": "s3cur3P@ss"
+  }'
+```
+
+---
+
+## POST /login.php
+
+Authenticates a user by email and password. The server fetches the row from `usuario` where `email` matches, then calls `password_verify()` against the stored bcrypt hash. On success it returns a subset of the user record (no password field is ever sent to the client).
+
+### Request body
+
+<ParamField body="email" type="string" required>
+  Registered email address.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Plain-text password to verify against the stored bcrypt hash.
+</ParamField>
+
+### Success response
+
+<ResponseField name="success" type="boolean" required>
+  Always `true` on a successful login.
+</ResponseField>
+
+<ResponseField name="usuario" type="object" required>
+  Object containing the authenticated user's profile.
+  <Expandable title="properties">
+    <ResponseField name="id_usuario" type="integer">
+      Primary key of the user record.
+    </ResponseField>
+    <ResponseField name="nombre" type="string">
+      User's first name.
+    </ResponseField>
+    <ResponseField name="email" type="string">
+      User's email address.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+```json
+{
+  "success": true,
+  "usuario": {
+    "id_usuario": 7,
+    "nombre": "Ana",
+    "email": "ana.garcia@example.com"
+  }
+}
+```
+
+### Failure response
+
+<ResponseField name="success" type="boolean" required>
+  Always `false` when authentication fails.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Human-readable reason. Possible values: `"Password erroneo"`, `"Usuario no encontrado"`, `"Datos incompletos"`.
+</ResponseField>
+
+```json
+{
+  "success": false,
+  "message": "Password erroneo"
+}
+```
+
+<Note>
+  The server uses a prepared statement (`SELECT * FROM usuario WHERE email = ?`) to look up the user, preventing SQL injection. The raw password sent by the client is never logged or stored.
+</Note>
+
+### Examples
+
+```bash
+# Successful login
+curl -X POST https://wants-terrain-canvas-scholarships.trycloudflare.com/login.php \
+  -H "Content-Type: application/json; charset=utf-8" \
+  -d '{"email": "ana.garcia@example.com", "password": "s3cur3P@ss"}'
+
+# Wrong password
+curl -X POST https://wants-terrain-canvas-scholarships.trycloudflare.com/login.php \
+  -H "Content-Type: application/json; charset=utf-8" \
+  -d '{"email": "ana.garcia@example.com", "password": "wrongpassword"}'
+```

@@ -1,0 +1,88 @@
+{
+  "projectType": "saas",
+  "projectName": "Auditorio Estelar",
+  "projectDescription": "An Android concert hall ticketing app with seat selection, session management, and a PHP/MySQL backend API for managing concerts, reservations, and user accounts.",
+  "theme": "almond",
+  "primaryColor": "#7B3FA8",
+  "lightColor": "#F3E8FF",
+  "darkColor": "#3B1860",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/concerts",
+              "features/seat-selection",
+              "features/reservations",
+              "features/calendar"
+            ]
+          },
+          {
+            "group": "User Accounts",
+            "pages": [
+              "accounts/registration",
+              "accounts/login",
+              "accounts/session-management"
+            ]
+          },
+          {
+            "group": "Backend Setup",
+            "pages": [
+              "backend/database",
+              "backend/server-setup",
+              "backend/configuration"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api/overview",
+              "api/auth",
+              "api/concerts",
+              "api/sessions",
+              "api/seats",
+              "api/reservations"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Concert listing with promotional posters",
+    "Interactive seat map with zone-based pricing",
+    "Seat availability states (available, selected, reserved, unavailable)",
+    "Shopping cart with multi-seat selection and total calculation",
+    "Session/showtime browsing filtered to future dates",
+    "Event calendar view with concert sessions",
+    "User registration and login with hashed passwords",
+    "Transactional reservation confirmation with concurrency control",
+    "Bottom navigation with Home, Calendar, Profile, and Menu tabs",
+    "PHP REST API backend with MySQL database"
+  ],
+  "publicApiSurface": [
+    "POST /registrar.php — Register a new user",
+    "POST /login.php — Authenticate and retrieve user info",
+    "GET /mostrar_cartelera.php — List all concerts",
+    "GET /obtener_sesiones.php?id_concierto={id} — Get upcoming sessions for a concert",
+    "GET /obtener_butacas_sesion.php?id_sesion={id} — Get seats and their states for a session",
+    "GET /obtener_calendario.php — Get upcoming calendar events with concert and session details",
+    "POST /confirmar_reserva.php — Create a reservation for selected seats (transactional)"
+  ]
+}

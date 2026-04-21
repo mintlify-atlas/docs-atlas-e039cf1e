@@ -1,0 +1,104 @@
+---
+title: "How to create a new account in Auditorio Estelar app"
+description: "Learn how to register a new account in Auditorio Estelar, what fields are required, and how your password is securely stored on the server."
+---
+
+To use Auditorio Estelar's ticketing features you first need to create an account. The registration screen collects your personal details, validates that your passwords match on the client side, and then sends your data to the backend where the password is hashed before being written to the database.
+
+## Registration form fields
+
+`RegistroFragment` renders six input fields. All of them are required before the app calls the API.
+
+| Field | View ID | Description |
+|---|---|---|
+| First name | `Nombre` | Your given name |
+| Last name | `Apellido` | Your family name |
+| Email | `Correo` | Used as your unique login identifier |
+| Phone | `Telefono` | Contact number |
+| Password | `Contraseña` | Must match the confirmation field |
+| Confirm password | `RepetirContraseña` | Client-side equality check only |
+
+Before the network call is made, the fragment checks that `password` equals `confirm`. If they differ, a toast is shown and the request is never sent:
+
+```java
+if (!pass.equals(confirm)) {
+    Toast.makeText(getContext(), "Las contraseñas no coinciden", Toast.LENGTH_SHORT).show();
+    return;
+}
+```
+
+## The `Usuario` model
+
+The app builds a `Usuario` object and passes it directly to Retrofit for serialization:
+
+```java
+public class Usuario {
+
+    private String nombre;
+    private String apellido;
+    private String email;
+    private String telefono;
+    private String password;
+    private int id_usuario;
+
+    // Constructor vacío (Indispensable para Retrofit)
+    public Usuario() {
+    }
+
+    // Constructor con parámetros
+    public Usuario(String nombre, String apellido, String email, String telefono, String password) {
+        this.nombre = nombre;
+        this.apellido = apellido;
+        this.email = email;
+        this.telefono = telefono;
+        this.password = password;
+    }
+}
+```
+
+## API request
+
+The app calls `POST /registrar.php` with a JSON body matching the `Usuario` fields. Retrofit serializes the object automatically.
+
+```json
+{
+  "nombre": "Ana",
+  "apellido": "García",
+  "email": "ana@ejemplo.com",
+  "telefono": "5512345678",
+  "password": "miContraseña123"
+}
+```
+
+## Server-side password hashing
+
+The backend never stores your password in plain text. `registrar.php` hashes it with PHP's `password_hash()` using `PASSWORD_DEFAULT` (bcrypt) before executing the `INSERT`:
+
+```php
+$password_encriptada = password_hash($datos->password, PASSWORD_DEFAULT);
+$rol = 'cliente';
+
+$sql = "INSERT INTO usuario (nombre, apellido, email, telefono, password, rol) VALUES (?, ?, ?, ?, ?, ?)";
+$sentencia = $conexion->prepare($sql);
+$sentencia->bind_param("ssssss", $nombre, $apellido, $email, $telefono, $password_encriptada, $rol);
+```
+
+All new accounts are assigned the `cliente` role automatically.
+
+## Duplicate email handling
+
+Email addresses must be unique in the `usuario` table. If you try to register with an address that already exists, the database constraint causes the `execute()` call to fail and the server responds with an error message:
+
+```php
+if ($sentencia->execute()) {
+    echo json_encode("Usuario registrado correctamente");
+} else {
+    echo json_encode("Error: El correo ya existe");
+}
+```
+
+The Android app displays the server's plain-text response directly in a toast, so you will see the message on screen.
+
+<Note>
+  Auditorio Estelar does not currently implement two-factor authentication or email verification. Accounts are active immediately after a successful registration response.
+</Note>

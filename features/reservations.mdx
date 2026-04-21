@@ -1,0 +1,136 @@
+---
+title: "Confirming reservations and transactional seat booking"
+description: "Walk through the confirmation screen, the JSON payload sent to the backend, and how the database transaction atomically prevents double-booking any seat."
+---
+
+After you choose your seats, `ConfirmarCompraFragment` gives you a full summary before you commit to the purchase. The fragment displays the concert title, session date and time, a line-by-line breakdown of every selected seat, and the total price. Tapping **Confirm** sends a single POST request to the backend, which processes the entire reservation atomically inside a database transaction.
+
+## The confirmation screen
+
+`ConfirmarCompraFragment` receives the selected seats, session ID, and concert details via a `Bundle`:
+
+```java
+// ConfirmarCompraFragment.java — reading the bundle
+butacasSeleccionadas = (ArrayList<Butaca>) getArguments().getSerializable("butacas");
+idSesion = getArguments().getInt("id_sesion");
+titulo   = getArguments().getString("titulo");
+fecha    = getArguments().getString("fecha");
+hora     = getArguments().getString("hora");
+```
+
+The `mostrarDatos()` method builds a formatted string for each seat that includes the row, seat number, zone name, and price:
+
+```java
+// ConfirmarCompraFragment.java — seat summary
+for (Butaca b : butacasSeleccionadas) {
+    texto.append("Fila ")
+            .append(b.getFila())
+            .append(" - Asiento ")
+            .append(b.getNumero())
+            .append(" (")
+            .append(b.getZona())
+            .append(") - ")
+            .append(b.getPrecio())
+            .append("€\n");
+    total += b.getPrecio();
+}
+txtTotal.setText("Total: " + total + " €");
+```
+
+## Authentication requirement
+
+The fragment reads the currently logged-in user from `SessionManager`:
+
+```java
+// ConfirmarCompraFragment.java — get logged-in user
+session = new SessionManager(getContext());
+datos.put("id_usuario", session.getIdUsuario());
+```
+
+`ButacasFragment` already redirects unauthenticated users to `LoginFragment` before the seat map is shown, so by the time you reach this screen a valid `id_usuario` is always available.
+
+## Sending the reservation
+
+When you tap **Confirm**, the app constructs a JSON payload and POSTs it to `confirmar_reserva.php` via Retrofit:
+
+```java
+// ConfirmarCompraFragment.java — building the request body
+Map<String, Object> datos = new HashMap<>();
+datos.put("id_usuario", session.getIdUsuario());
+datos.put("id_sesion", idSesion);
+
+List<Map<String, Object>> listaButacas = new ArrayList<>();
+for (Butaca b : butacasSeleccionadas) {
+    Map<String, Object> asiento = new HashMap<>();
+    asiento.put("id_butaca", b.getIdButaca());
+    asiento.put("precio",    b.getPrecio());
+    listaButacas.add(asiento);
+}
+datos.put("butacas", listaButacas);
+```
+
+The JSON body sent to the endpoint looks like this:
+
+```json
+{
+  "id_usuario": 12,
+  "id_sesion": 5,
+  "butacas": [
+    { "id_butaca": 42, "precio": 25.00 },
+    { "id_butaca": 43, "precio": 25.00 }
+  ]
+}
+```
+
+## Transactional backend behaviour
+
+The backend processes the reservation inside a single MySQL transaction to guarantee consistency:
+
+<Steps>
+  <Step title="Validate the request">
+    `confirmar_reserva.php` checks that `id_usuario`, `id_sesion`, and `butacas` are all present and non-empty. Missing or zero-value fields return `{"success": false, "error": "Datos incompletos"}` immediately.
+  </Step>
+  <Step title="Open a transaction">
+    `$conexion->begin_transaction()` starts an atomic block. All subsequent writes either commit together or roll back together.
+  </Step>
+  <Step title="Insert the reservation header">
+    A row is inserted into the `reserva` table for the user. The auto-increment `id_reserva` is captured with `$conexion->insert_id`.
+
+    ```php
+    // confirmar_reserva.php
+    $stmt = $conexion->prepare("INSERT INTO reserva (id_usuario) VALUES (?)");
+    $stmt->bind_param("i", $id_usuario);
+    $stmt->execute();
+    $id_reserva = $conexion->insert_id;
+    ```
+  </Step>
+  <Step title="Check and book each seat">
+    For every seat in the request the backend checks `butaca_sesion.estado` is still `DISPONIBLE`. If it is, a row is inserted into `reserva_butaca` and the `butaca_sesion` record is updated to `RESERVADA`.
+
+    ```php
+    // confirmar_reserva.php — per-seat check and update
+    $stmt_check->bind_param("ii", $id_sesion, $id_butaca);
+    $stmt_check->execute();
+    $row = $stmt_check->get_result()->fetch_assoc();
+
+    if (!$row || $row['estado'] !== 'DISPONIBLE') {
+        throw new Exception("Butaca $id_butaca no disponible");
+    }
+
+    $stmt_rb->bind_param("iii", $id_reserva, $id_sesion, $id_butaca);
+    $stmt_rb->execute();
+
+    $stmt_update->bind_param("ii", $id_sesion, $id_butaca);
+    $stmt_update->execute();
+    ```
+  </Step>
+  <Step title="Commit or roll back">
+    If every seat passes, `$conexion->commit()` finalises all writes and the endpoint returns `{"success": true, "id_reserva": ...}`. On any exception, `$conexion->rollback()` undoes every write from this request.
+  </Step>
+</Steps>
+
+<Warning>
+  If **any** seat in your selection has been reserved by another user between the time you loaded the seat map and the moment you confirm, the entire transaction rolls back. None of your seats are booked, and you receive an error response. You need to go back to the seat map and choose different seats.
+</Warning>
+
+On a successful response the app calls `getParentFragmentManager().popBackStack()`, returning you to the previous screen. A `Toast` message confirms the booking.

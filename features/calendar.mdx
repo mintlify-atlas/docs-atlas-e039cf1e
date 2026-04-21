@@ -1,0 +1,136 @@
+---
+title: "Viewing and navigating upcoming events on the calendar"
+description: "See how the calendar marks session dates with dots, how tapping a date filters the event list below it, and how to jump straight to seat selection."
+---
+
+The calendar gives you a monthly overview of every upcoming concert session. `CalendarioFragment` uses `MaterialCalendarView` to render a full month grid and decorates each date that has at least one scheduled session with a gold dot. Tapping any marked date filters a list of events below the calendar, where you can tap an event to go directly to seat selection.
+
+## How the calendar loads events
+
+When `CalendarioFragment` starts, it calls `descargarEventos()`, which hits the `obtener_calendario.php` endpoint via Retrofit. The response is a list of `EventoCalendario` objects. Once loaded, `actualizarPuntos()` collects the unique dates and adds a dot decorator for each one:
+
+```java
+// CalendarioFragment.java — marking dates with dots
+private void actualizarPuntos() {
+    HashSet<CalendarDay> fechas = new HashSet<>();
+    for (EventoCalendario e : listaCalendario) {
+        CalendarDay dia = parsearFecha(e.getFecha());
+        if (dia != null) fechas.add(dia);
+    }
+    calendarView.addDecorator(new PuntoEventoCalendario(Color.parseColor("#D4A047"), fechas));
+}
+```
+
+The backend query joins `concierto` and `sesion`, filters to future dates only, and orders results chronologically:
+
+```php
+// obtener_calendario.php
+$sql = "SELECT
+            c.id_concierto,
+            c.titulo,
+            c.descripcion,
+            c.cartel_url,
+            s.id_sesion,
+            s.fecha,
+            DATE_FORMAT(s.hora, '%H:%i') AS hora
+        FROM concierto c
+        INNER JOIN sesion s ON c.id_concierto = s.id_concierto
+        WHERE s.fecha >= CURDATE()
+        ORDER BY s.fecha ASC, s.hora ASC";
+```
+
+Only sessions from today onwards are returned, so past events never appear on the calendar.
+
+## The `EventoCalendario` data model
+
+Each item in the calendar response is mapped to an `EventoCalendario` object that combines concert and session data in a single flat structure:
+
+```java
+// EventoCalendario.java
+public class EventoCalendario implements Serializable {
+    private int    id_concierto;
+    private String titulo;
+    private String descripcion; // populated from JSON; no getter in current code
+    private String cartel_url;
+    private int    id_sesion;
+    private String fecha;    // "YYYY-MM-DD"
+    private String hora;     // "HH:mm" (formatted by DATE_FORMAT in SQL)
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `id_concierto` | `int` | Concert identifier |
+| `titulo` | `String` | Concert title shown in the event list |
+| `descripcion` | `String` | Short concert description |
+| `cartel_url` | `String` | Poster image URL |
+| `id_sesion` | `int` | Session identifier used to load the seat map |
+| `fecha` | `String` | Session date in `YYYY-MM-DD` format |
+| `hora` | `String` | Session time formatted as `HH:mm` |
+
+## Tapping a date to see events
+
+When you tap a date on the calendar, `CalendarioFragment` compares each event's parsed date against the selected `CalendarDay` and builds a filtered list:
+
+```java
+// CalendarioFragment.java — date filter
+calendarView.setOnDateChangedListener((widget, date, selected) -> {
+    filtrarEventosPorDia(date);
+});
+
+private void filtrarEventosPorDia(CalendarDay diaPulsado) {
+    List<EventoCalendario> filtrados = new ArrayList<>();
+    for (EventoCalendario e : listaCalendario) {
+        CalendarDay fechaEvento = parsearFecha(e.getFecha());
+        if (fechaEvento != null && fechaEvento.equals(diaPulsado)) {
+            filtrados.add(e);
+        }
+    }
+    adapter = new AdaptadorEventosCalendario(filtrados, evento -> abrirButacas(evento));
+    recyclerView.setAdapter(adapter);
+}
+```
+
+`AdaptadorEventosCalendario` renders each matching event as a row showing the concert title and session time. Tapping a row fires the `OnItemClickListener` callback, which calls `abrirButacas()`.
+
+## Navigating to seat selection
+
+Tapping an event row opens `ButacasFragment` directly for that session, bypassing the concert detail screen:
+
+```java
+// CalendarioFragment.java — open seat map from event
+private void abrirButacas(EventoCalendario e) {
+    Bundle b = new Bundle();
+    b.putInt("id_sesion", e.getIdSesion());
+    b.putString("titulo", e.getTitulo());
+    b.putString("fecha",  e.getFecha());
+    b.putString("hora",   e.getHora());
+
+    ButacasFragment fragment = new ButacasFragment();
+    fragment.setArguments(b);
+    getParentFragmentManager().beginTransaction()
+            .replace(R.id.fragment_container, fragment)
+            .addToBackStack(null)
+            .commit();
+}
+```
+
+<Tip>
+  You can tap any event in the list below the calendar to jump straight to the seat map for that session without going through the concert detail screen first. This is the fastest route to booking a specific performance you already know about.
+</Tip>
+
+## Calendar display settings
+
+The calendar is configured for a Spanish-language audience and starts each week on Monday:
+
+```java
+// CalendarioFragment.java — locale and display settings
+calendarView.state().edit()
+        .setFirstDayOfWeek(DayOfWeek.MONDAY)
+        .commit();
+
+calendarView.setShowOtherDates(MaterialCalendarView.SHOW_NONE);
+calendarView.setSelectionColor(Color.parseColor("#80D4A047"));
+```
+
+Day-of-week headers use single Spanish letters (L, M, X, J, V, S, D) via a custom `WeekDayFormatter`, and month names are loaded from a string array resource (`R.array.meses_esp`).

@@ -1,0 +1,55 @@
+---
+title: "Auditorio Estelar REST API — all endpoints overview"
+description: "Overview of the PHP REST API that powers Auditorio Estelar. Covers the base URL, JSON content type, and all seven available endpoints with links to each."
+---
+
+The Auditorio Estelar backend exposes a set of PHP scripts as REST endpoints. Each script accepts JSON over HTTP and returns JSON responses, making it straightforward to call from the Android app via Retrofit or from any HTTP client.
+
+## Base URL
+
+The base URL is configured in `RetrofitClient.java`. The active production value points to a Cloudflare tunnel, and the local Android emulator address is kept commented out for reference:
+
+```java
+// RetrofitClient.java
+private static final String BASE_URL =
+    "https://wants-terrain-canvas-scholarships.trycloudflare.com/"; // server aitor
+//private static final String BASE_URL = "http://10.0.2.2/teatro/config/"; // sin uso cambiar si se cierra el server
+```
+
+When running the app against a local XAMPP server, replace `BASE_URL` with the address of your local server (e.g. `http://10.0.2.2/teatro/` from the Android Emulator, where `10.0.2.2` is the emulator's alias for `localhost`).
+
+## Content type
+
+All requests must send `Content-Type: application/json; charset=utf-8`. All responses are also returned as `application/json; charset=utf-8`.
+
+## Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/registrar.php` | Register a new user account |
+| `POST` | `/login.php` | Authenticate an existing user |
+| `GET`  | `/mostrar_cartelera.php` | List all concerts |
+| `GET`  | `/obtener_sesiones.php` | Get future sessions for a concert |
+| `GET`  | `/obtener_butacas_sesion.php` | Get seat layout and availability for a session |
+| `GET`  | `/obtener_calendario.php` | Get upcoming calendar events (concerts + sessions) |
+| `POST` | `/confirmar_reserva.php` | Confirm a seat reservation |
+
+## Explore by section
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="lock" href="/api/auth">
+    Register a new account and log in with email and password.
+  </Card>
+  <Card title="Concerts" icon="music" href="/api/concerts">
+    Retrieve the full concert listing from the cartelera.
+  </Card>
+  <Card title="Sessions" icon="calendar" href="/api/sessions">
+    Query future sessions scheduled for a specific concert.
+  </Card>
+  <Card title="Seats" icon="armchair" href="/api/seats">
+    Fetch seat layout, zones, prices, and availability for a session.
+  </Card>
+  <Card title="Reservations" icon="ticket" href="/api/reservations">
+    Submit a transactional reservation for one or more seats.
+  </Card>
+</CardGroup>

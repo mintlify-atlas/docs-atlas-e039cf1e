@@ -1,0 +1,94 @@
+---
+title: "GET /obtener_sesiones.php — upcoming session dates"
+description: "Reference for GET /obtener_sesiones.php, which returns only future scheduled sessions for a concert, filtered by the server's current date and time."
+---
+
+The sessions endpoint returns all upcoming performances scheduled for a given concert. The server filters out any session whose date and time is in the past, so you always receive a list that is safe to present to the user for booking. Results are ordered chronologically by date and then time.
+
+---
+
+## GET /obtener_sesiones.php
+
+### Query parameters
+
+<ParamField query="id_concierto" type="integer" required>
+  The primary key of the concert whose sessions you want to retrieve. Corresponds to `id_concierto` in the `concierto` table.
+</ParamField>
+
+### SQL executed
+
+The query uses a prepared statement and compares against `date('Y-m-d')` and `date('H:i:s')` captured at request time on the server:
+
+```php
+$sql = "SELECT id_sesion, fecha, hora
+        FROM sesion
+        WHERE id_concierto = ?
+        AND (
+            fecha > ?
+            OR (fecha = ? AND hora >= ?)
+        )
+        ORDER BY fecha, hora";
+```
+
+This means:
+- Sessions on a **future date** are always included.
+- Sessions on **today's date** are included only if their `hora` is greater than or equal to the current server time.
+- Sessions already in the past are excluded entirely.
+
+### Response
+
+An array of session objects. Returns an empty array `[]` if no future sessions exist for the given concert.
+
+<ResponseField name="id_sesion" type="integer">
+  Primary key of the session record.
+</ResponseField>
+
+<ResponseField name="fecha" type="string">
+  Session date in `YYYY-MM-DD` format.
+</ResponseField>
+
+<ResponseField name="hora" type="string">
+  Session start time in `HH:MM:SS` format (24-hour clock).
+</ResponseField>
+
+### Sample response
+
+```json
+[
+  {
+    "id_sesion": "12",
+    "fecha": "2026-05-10",
+    "hora": "19:30:00"
+  },
+  {
+    "id_sesion": "13",
+    "fecha": "2026-05-11",
+    "hora": "21:00:00"
+  },
+  {
+    "id_sesion": "14",
+    "fecha": "2026-06-03",
+    "hora": "19:30:00"
+  }
+]
+```
+
+<Note>
+  The `id_sesion` and `fecha` values in the response are returned as strings by PHP's `json_encode`. If your client needs strict integer types, cast `id_sesion` before use. Retrofit's Gson converter handles this automatically when the target field is declared as `int`.
+</Note>
+
+### curl example
+
+```bash
+curl -X GET "https://wants-terrain-canvas-scholarships.trycloudflare.com/obtener_sesiones.php?id_concierto=1" \
+  -H "Content-Type: application/json; charset=utf-8"
+```
+
+### Retrofit call
+
+```java
+@GET("obtener_sesiones.php")
+Call<List<Sesion>> obtenerSesiones(@Query("id_concierto") int idConcierto);
+```
+
+Retrofit appends `?id_concierto=<value>` to the URL automatically. The response is deserialized into a `List<Sesion>`.

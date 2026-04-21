@@ -1,0 +1,65 @@
+---
+title: "Auditorio Estelar: Android concert hall ticketing app"
+description: "Auditorio Estelar is an Android concert ticketing app for browsing shows, choosing seats, and booking tickets. Built with Java, Retrofit, and a PHP/MySQL API."
+---
+
+Auditorio Estelar is an Android application that lets users browse upcoming concerts at a stellar auditorium, pick their seats on an interactive seating plan, and complete their ticket purchase — all from their phone. The app communicates with a PHP REST API backed by a MySQL database to fetch real-time concert listings, session schedules, and seat availability.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Set up the backend and run the Android app in minutes
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture">
+    Understand how the Android app and PHP backend fit together
+  </Card>
+  <Card title="Core Features" icon="star" href="/features/concerts">
+    Explore concerts, seat selection, reservations, and the calendar
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/overview">
+    Full documentation of all backend REST endpoints
+  </Card>
+</CardGroup>
+
+## What you can do with Auditorio Estelar
+
+<CardGroup cols={2}>
+  <Card title="Browse concerts" icon="music" href="/features/concerts">
+    View the current billboard with concert posters, titles, and descriptions
+  </Card>
+  <Card title="Select seats" icon="chair" href="/features/seat-selection">
+    Choose seats on an interactive hall map with zone-based pricing
+  </Card>
+  <Card title="Make reservations" icon="ticket" href="/features/reservations">
+    Confirm purchases for one or more seats in a single transaction
+  </Card>
+  <Card title="Event calendar" icon="calendar" href="/features/calendar">
+    See all upcoming sessions at a glance on a month-view calendar
+  </Card>
+</CardGroup>
+
+## How it works
+
+<Steps>
+  <Step title="Create an account">
+    Register with your name, email, and password. Passwords are hashed with PHP's `password_hash` before storage.
+  </Step>
+  <Step title="Browse the billboard">
+    The home screen shows all active concerts fetched from the backend, each with a promotional poster loaded via Glide.
+  </Step>
+  <Step title="Choose a session and seats">
+    Tap a concert to see upcoming sessions. Then pick your seats on the interactive seating map — available, selected, and reserved states are shown in real time.
+  </Step>
+  <Step title="Confirm your reservation">
+    Review your selected seats and total price, then confirm. The backend processes the reservation atomically, preventing double-booking.
+  </Step>
+</Steps>
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Mobile app | Java (Android Studio), Retrofit 2, Glide |
+| Backend API | PHP 8, MySQLi |
+| Database | MySQL (`teatro_proyecto`) |
+| Networking | HTTP REST (JSON) |
+| Calendar | MaterialCalendarView |
